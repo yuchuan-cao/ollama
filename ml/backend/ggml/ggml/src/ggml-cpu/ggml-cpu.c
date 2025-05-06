@@ -1,5 +1,7 @@
 #define _CRT_SECURE_NO_DEPRECATE // Disables "unsafe" warnings on Windows
 #define _USE_MATH_DEFINES // For M_PI on MSVC
+#define HWCAP_ASIMDDP (1 << 20)
+#define HWCAP_SVE (1 << 22)
 
 #include "ggml-backend-impl.h"
 #include "ggml-backend.h"
