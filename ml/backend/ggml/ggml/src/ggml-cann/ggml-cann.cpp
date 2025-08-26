@@ -1669,9 +1669,9 @@ static bool ggml_cann_compute_forward(ggml_backend_cann_context& ctx,
         case GGML_OP_GET_ROWS:
             ggml_cann_get_rows(ctx, dst);
             break;
-        // case GGML_OP_SET_ROWS:
-        //     ggml_cann_set_rows(ctx, dst);
-        //     break;
+        case GGML_OP_SET_ROWS:
+            ggml_cann_set_rows(ctx, dst);
+            break;
         case GGML_OP_DUP:
             ggml_cann_dup(ctx, dst);
             break;
@@ -1700,7 +1700,7 @@ static bool ggml_cann_compute_forward(ggml_backend_cann_context& ctx,
                     GGML_CANN_CALL_OP_UNARY(Neg);
                     break;
                 case GGML_UNARY_OP_GELU:
-                // case GGML_UNARY_OP_GELU_ERF:
+                case GGML_UNARY_OP_GELU_ERF:
                     // aclnnGelu internally uses the erf-based approximation.
                     GGML_CANN_CALL_OP_UNARY(Gelu);
                     break;
@@ -1746,31 +1746,31 @@ static bool ggml_cann_compute_forward(ggml_backend_cann_context& ctx,
                     return false;
             }
             break;
-        // case GGML_OP_GLU:
-        //     switch (ggml_get_glu_op(dst)) {
-        //         case GGML_GLU_OP_REGLU:
-        //             GGML_CANN_CALL_OP_UNARY_GATED(Relu);
-        //             break;
-        //         case GGML_GLU_OP_GEGLU:
-        //         case GGML_GLU_OP_GEGLU_ERF:
-        //             // aclnnGelu internally uses the erf-based approximation.
-        //             GGML_CANN_CALL_OP_UNARY_GATED(Gelu);
-        //             break;
-        //         case GGML_GLU_OP_SWIGLU:
-        //             GGML_CANN_CALL_OP_UNARY_GATED(Silu);
-        //             break;
-        //         case GGML_GLU_OP_GEGLU_QUICK: {
-        //             auto lambda = [](ggml_backend_cann_context& ctx,
-        //                 aclTensor* acl_src,
-        //                 aclTensor* acl_dst) {
-        //                 GGML_CANN_CALL_ACLNN_OP(ctx, GeluV2, acl_src, 0, acl_dst);
-        //             };
-        //             ggml_cann_op_unary_gated(lambda, ctx, dst);
-        //         } break;
-        //         default:
-        //             return false;
-        //     }
-        //     break;
+        case GGML_OP_GLU:
+            switch (ggml_get_glu_op(dst)) {
+                case GGML_GLU_OP_REGLU:
+                    GGML_CANN_CALL_OP_UNARY_GATED(Relu);
+                    break;
+                case GGML_GLU_OP_GEGLU:
+                case GGML_GLU_OP_GEGLU_ERF:
+                    // aclnnGelu internally uses the erf-based approximation.
+                    GGML_CANN_CALL_OP_UNARY_GATED(Gelu);
+                    break;
+                case GGML_GLU_OP_SWIGLU:
+                    GGML_CANN_CALL_OP_UNARY_GATED(Silu);
+                    break;
+                case GGML_GLU_OP_GEGLU_QUICK: {
+                    auto lambda = [](ggml_backend_cann_context& ctx,
+                        aclTensor* acl_src,
+                        aclTensor* acl_dst) {
+                        GGML_CANN_CALL_ACLNN_OP(ctx, GeluV2, acl_src, 0, acl_dst);
+                    };
+                    ggml_cann_op_unary_gated(lambda, ctx, dst);
+                } break;
+                default:
+                    return false;
+            }
+            break;
         case GGML_OP_NORM:
             ggml_cann_norm(ctx, dst);
             break;
@@ -2311,23 +2311,23 @@ static bool ggml_backend_cann_supports_op(ggml_backend_dev_t dev,
                 case GGML_UNARY_OP_ELU:
                 case GGML_UNARY_OP_SGN:
                 case GGML_UNARY_OP_STEP:
-                // case GGML_UNARY_OP_GELU_ERF:
+                case GGML_UNARY_OP_GELU_ERF:
                     return true;
                 default:
                     return false;
             }
-        // case GGML_OP_GLU:
-        //     switch (ggml_get_glu_op(op)) {
-        //         case GGML_GLU_OP_REGLU:
-        //         case GGML_GLU_OP_GEGLU:
-        //         case GGML_GLU_OP_SWIGLU:
-        //         case GGML_GLU_OP_GEGLU_ERF:
-        //         case GGML_GLU_OP_GEGLU_QUICK:
-        //             return true;
-        //         default:
-        //             return false;
-        //     }
-        //     break;
+        case GGML_OP_GLU:
+            switch (ggml_get_glu_op(op)) {
+                case GGML_GLU_OP_REGLU:
+                case GGML_GLU_OP_GEGLU:
+                case GGML_GLU_OP_SWIGLU:
+                case GGML_GLU_OP_GEGLU_ERF:
+                case GGML_GLU_OP_GEGLU_QUICK:
+                    return true;
+                default:
+                    return false;
+            }
+            break;
         case GGML_OP_MUL_MAT: {
             switch (op->src[0]->type) {
                 case GGML_TYPE_F16:
@@ -2374,15 +2374,15 @@ static bool ggml_backend_cann_supports_op(ggml_backend_dev_t dev,
                     return false;
             }
         } break;
-        // case GGML_OP_SET_ROWS: {
-        //     switch (op->type) {
-        //         case GGML_TYPE_F32:
-        //         case GGML_TYPE_F16:
-        //             return true;
-        //         default:
-        //             return false;
-        //     }
-        // } break;
+        case GGML_OP_SET_ROWS: {
+            switch (op->type) {
+                case GGML_TYPE_F32:
+                case GGML_TYPE_F16:
+                    return true;
+                default:
+                    return false;
+            }
+        } break;
         case GGML_OP_CPY: {
             ggml_tensor *src = op->src[0];
             if ((op->type != GGML_TYPE_F32 && op->type != GGML_TYPE_F16) ||
