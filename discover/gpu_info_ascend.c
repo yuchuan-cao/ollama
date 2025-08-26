@@ -140,13 +140,13 @@ void ascend_bootstrap(ascend_handle_t h, int device_id, mem_info_t *resp) {
 
     size_t free = 0;
     size_t total = 0;
-    aclRet = (*h.aclrtGetMemInfo)(ACL_DDR_MEM, &free, &total);
-    if (aclRet != ACL_SUCCESS) {
-        printf("aclrtGetMemInfo to DDR failed: %u\n", device_id);
-        return;
-    }
-    resp->free += free;
-    resp->total += total;
+    // aclRet = (*h.aclrtGetMemInfo)(ACL_DDR_MEM, &free, &total);
+    // if (aclRet != ACL_SUCCESS) {
+    //     printf("aclrtGetMemInfo to DDR failed: %u\n", device_id);
+    //     return;
+    // }
+    // resp->free += free;
+    // resp->total += total;
 
     aclRet = (*h.aclrtGetMemInfo)(ACL_HBM_MEM, &free, &total);
     if (aclRet != ACL_SUCCESS) {
