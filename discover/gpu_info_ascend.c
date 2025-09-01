@@ -99,6 +99,44 @@ void ascend_init(char *ascend_lib_path, ascend_init_resp_t *resp)
   }
 }
 
+void cann_parse_uuid(int32_t device, char *uuid) {
+    FILE *fp;
+    char line[128];
+    int npu_id = -1;
+
+    fp = popen("npu-smi info -m", "r");
+    if (!fp) { return ;}
+
+    while (fgets(line, sizeof(line), fp)) {
+        int parsed_chip_logic_id, parsed_npu_id;
+        if (sscanf(line, "%d %*d %d", &parsed_npu_id, &parsed_chip_logic_id) == 2) {
+            if (parsed_chip_logic_id == device) {
+                npu_id = parsed_npu_id;
+                break;
+            }
+        }
+    }
+
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "npu-smi info -t board -i %d -c 0", npu_id);
+    fp = popen(cmd, "r");
+    if (!fp) { return ;}
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, "VDie ID")) {
+            char *p = strchr(line, ':');
+            if (p) {
+                p++; 
+                while (*p == ' ' || *p == '\t') p++; 
+                strncpy(uuid, p, 44);
+                break ; 
+            }
+        }
+    }
+    uuid[44]='\0';
+    pclose(fp);
+}
+
 void ascend_bootstrap(ascend_handle_t h, int device_id, mem_info_t *resp) {
     resp->err = NULL;
     aclError aclRet;
@@ -110,7 +148,10 @@ void ascend_bootstrap(ascend_handle_t h, int device_id, mem_info_t *resp) {
         return; 
     }
 
-    snprintf(&resp->gpu_id[0], GPU_ID_LEN, "%d", device_id);
+    char uuid[45];
+    cann_parse_uuid(device_id, uuid);
+
+    snprintf(&resp->gpu_id[0], GPU_ID_LEN, "%s", uuid);
 
     aclRet = (*h.aclrtSetDevice)(device_id);
     if (aclRet != ACL_SUCCESS) {

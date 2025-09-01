@@ -72,6 +72,7 @@ typedef struct ascend_init_resp
 
 void ascend_init(char *ascend_lib_path, ascend_init_resp_t *resp);
 void ascend_bootstrap(ascend_handle_t h, int device_id, mem_info_t *resp);
+void cann_parse_uuid(int32_t device, char *uuid);
 void ascend_release(ascend_handle_t h);
 
 #endif // __GPU_INFO_ASCEND_H__
