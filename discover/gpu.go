@@ -392,15 +392,15 @@ func GetGPUInfo() GpuInfoList {
 					index: i,
 				}
 				C.ascend_bootstrap(*aHandles.ascend, C.int(i), &memInfo)
-				var totalFreeMem float64 = float64(memInfo.free) * 0.95 // work-around: leave some reserve vram for mkl lib used in ggml-sycl backend.
-				memInfo.free = C.uint64_t(totalFreeMem)
+				// var totalFreeMem float64 = float64(memInfo.free) * 0.95 // work-around: leave some reserve vram for mkl lib used in ggml-sycl backend.
+				// memInfo.free = C.uint64_t(totalFreeMem)
 				gpuInfo.TotalMemory = uint64(memInfo.total)
 				gpuInfo.FreeMemory = uint64(memInfo.free)
 				gpuInfo.ID = C.GoString(&memInfo.gpu_id[0])
 				gpuInfo.Name = C.GoString(&memInfo.gpu_name[0])
 				ascendGPUs = append(ascendGPUs, gpuInfo)
 
-				slog.Info(fmt.Sprintf("[%d] Name:%s: FreeMemory:%d, TotalMemory: %d", gpuInfo.ID, gpuInfo.Name, gpuInfo.FreeMemory, gpuInfo.TotalMemory))
+				slog.Info(fmt.Sprintf("[%s] Name:%s: FreeMemory:%d, TotalMemory: %d", gpuInfo.ID, gpuInfo.Name, gpuInfo.FreeMemory, gpuInfo.TotalMemory))
 			}
 		}
 

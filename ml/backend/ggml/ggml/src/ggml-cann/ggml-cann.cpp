@@ -2187,7 +2187,15 @@ static void add_lru_matched_graph_node_properties(
         std::copy_n(node->nb, GGML_MAX_DIMS, prop.nb);
 
         for (int src = 0; src < GGML_MAX_SRC; ++src) {
-            prop.src_address[src] = node->src[src] ? node->src[src]->data : nullptr;
+            if (node->src[src]) {
+                prop.src_address[src] = node->src[src]->data;
+                std::copy_n(node->src[src]->ne, GGML_MAX_DIMS, prop.src_ne[src]);
+                std::copy_n(node->src[src]->nb, GGML_MAX_DIMS, prop.src_nb[src]);
+            } else {
+                prop.src_address[src] = nullptr;
+                std::fill_n(prop.src_ne[src], GGML_MAX_DIMS, 0);
+                std::fill_n(prop.src_nb[src], GGML_MAX_DIMS, 0);
+            }
         }
 
         memcpy(prop.op_params, node->op_params, GGML_MAX_OP_PARAMS);
@@ -2207,14 +2215,18 @@ static void add_lru_matched_graph_node_properties(
  * @param graph_node_properties The stored properties of a CANN graph node.
  * @return true if all fields match (excluding GGML_OP_VIEW); false otherwise.
  */
-static bool ggml_graph_node_has_matching_properties(ggml_tensor * node, ggml_graph_node_properties * graph_node_properties) {
+static bool ggml_graph_node_has_matching_properties(
+        ggml_tensor * node,
+        ggml_graph_node_properties * graph_node_properties) {
     if (node->data != graph_node_properties->node_address &&
-           node->op != GGML_OP_VIEW) {
+            node->op != GGML_OP_VIEW) {
         return false;
     }
+
     if (node->op != graph_node_properties->node_op) {
         return false;
     }
+
     for (int i = 0; i < GGML_MAX_DIMS; i++) {
         if (node->ne[i] != graph_node_properties->ne[i]) {
             return false;
@@ -2223,17 +2235,31 @@ static bool ggml_graph_node_has_matching_properties(ggml_tensor * node, ggml_gra
             return false;
         }
     }
+
     for (int i = 0; i < GGML_MAX_SRC; i++) {
-        if (node->src[i] &&
-            node->src[i]->data != graph_node_properties->src_address[i] &&
-            node->op != GGML_OP_VIEW
-        ) {
-            return false;
+        if (node->src[i]) {
+            if (node->src[i]->data != graph_node_properties->src_address[i] &&
+                node->op != GGML_OP_VIEW) {
+                return false;
+            }
+
+            for (int d = 0; d < GGML_MAX_DIMS; d++) {
+                if (node->src[i]->ne[d] != graph_node_properties->src_ne[i][d]) {
+                    return false;
+                }
+                if (node->src[i]->nb[d] != graph_node_properties->src_nb[i][d]) {
+                    return false;
+                }
+            }
+        } else {
+            if (graph_node_properties->src_address[i] != nullptr) {
+                return false;
+            }
         }
     }
-    if (node->op == GGML_OP_SCALE &&
-        memcmp(graph_node_properties->op_params, node->op_params, GGML_MAX_OP_PARAMS) != 0) {
-        return false;
+
+    if (node->op == GGML_OP_SCALE || node->op == GGML_OP_UNARY || node->op == GGML_OP_GLU) {
+        return memcmp(graph_node_properties->op_params, node->op_params, GGML_MAX_OP_PARAMS) == 0;
     }
     return true;
 }
@@ -2757,7 +2783,7 @@ static const ggml_backend_i ggml_backend_cann_interface = {
     /* .graph_compute           = */ ggml_backend_cann_graph_compute,
     /* .event_record            = */ ggml_backend_cann_event_record,
     /* .event_wait              = */ ggml_backend_cann_event_wait,
-    /* .optimize_graph          =  NULL,*/
+    /* .graph_optimize          = */ NULL,
 };
 
 /**
@@ -2777,7 +2803,6 @@ static ggml_guid_t ggml_backend_cann_guid() {
 // backend device
 struct ggml_backend_cann_device_context {
     int device;
-    std::string id;
     std::string name;
     std::string description;
 };
@@ -2797,11 +2822,6 @@ static void ggml_backend_cann_device_get_memory(ggml_backend_dev_t dev, size_t *
     ggml_backend_cann_get_device_memory(ctx->device, free, total);
 }
 
-static const char *ggml_backend_cann_device_get_id(ggml_backend_dev_t dev) {
-    ggml_backend_cann_device_context * ctx = (ggml_backend_cann_device_context *)dev->context;
-    return ctx->id.c_str();
-}
-
 static enum ggml_backend_dev_type ggml_backend_cann_device_get_type(ggml_backend_dev_t dev) {
     GGML_UNUSED(dev);
     return GGML_BACKEND_DEVICE_TYPE_GPU;
@@ -2811,7 +2831,6 @@ static void ggml_backend_cann_device_get_props(ggml_backend_dev_t dev, ggml_back
     props->name        = ggml_backend_cann_device_get_name(dev);
     props->description = ggml_backend_cann_device_get_description(dev);
     props->type        = ggml_backend_cann_device_get_type(dev);
-    props->id          = ggml_backend_cann_device_get_id(dev);
     ggml_backend_cann_device_get_memory(dev, &props->memory_free, &props->memory_total);
 
     bool host_buffer = getenv("GGML_CANN_NO_PINNED") == nullptr;
@@ -2964,44 +2983,6 @@ static void * ggml_backend_cann_reg_get_proc_address(ggml_backend_reg_t reg, con
     return nullptr;
 }
 
-void ggml_backend_cann_parse_uuid(int32_t device, std::string &uuid) {
-    FILE *fp;
-    char line[128];
-    int npu_id = -1;
-
-    fp = popen("npu-smi info -m", "r");
-    if (!fp) { return ;}
-
-    while (fgets(line, sizeof(line), fp)) {
-        int parsed_chip_logic_id, parsed_npu_id;
-        if (sscanf(line, "%d %*d %d", &parsed_npu_id, &parsed_chip_logic_id) == 2) {
-            if (parsed_chip_logic_id == device) {
-                npu_id = parsed_npu_id;
-                break;
-            }
-        }
-    }
-
-    char cmd[128];
-    snprintf(cmd, sizeof(cmd), "npu-smi info -t board -i %d -c 0", npu_id);
-    fp = popen(cmd, "r");
-    if (!fp) { return ;}
-
-    while (fgets(line, sizeof(line), fp)) {
-        if (strstr(line, "VDie ID")) {
-            char *p = strchr(line, ':');
-            if (p) {
-                p++;
-                while (*p == ' ' || *p == '\t') p++;
-                uuid.assign(p, 44);
-                break ; 
-            }
-        }
-    }
-
-    pclose(fp);
-}
-
 static const ggml_backend_reg_i ggml_backend_cann_reg_interface = {
     /* .get_name          = */ ggml_backend_cann_reg_get_name,
     /* .get_device_count  = */ ggml_backend_cann_reg_get_device_count,
@@ -3027,7 +3008,6 @@ ggml_backend_reg_t ggml_backend_cann_reg() {
                 dev_ctx->device = i;
                 dev_ctx->name = GGML_CANN_NAME + std::to_string(i);
                 ggml_cann_set_device(i);
-                ggml_backend_cann_parse_uuid(i, dev_ctx->id);
                 ggml_backend_dev_t dev = new ggml_backend_device {
                     /* .iface   = */ ggml_backend_cann_device_interface,
                     /* .reg     = */ &reg,
