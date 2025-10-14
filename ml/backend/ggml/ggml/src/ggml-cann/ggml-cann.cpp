@@ -2783,7 +2783,7 @@ static const ggml_backend_i ggml_backend_cann_interface = {
     /* .graph_compute           = */ ggml_backend_cann_graph_compute,
     /* .event_record            = */ ggml_backend_cann_event_record,
     /* .event_wait              = */ ggml_backend_cann_event_wait,
-    /* .graph_optimize          = */ NULL,
+    // /* .graph_optimize          = */ NULL,
 };
 
 /**
