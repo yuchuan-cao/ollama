@@ -2805,6 +2805,7 @@ struct ggml_backend_cann_device_context {
     int device;
     std::string name;
     std::string description;
+    std::string id;
 };
 
 static const char * ggml_backend_cann_device_get_name(ggml_backend_dev_t dev) {
@@ -2822,6 +2823,11 @@ static void ggml_backend_cann_device_get_memory(ggml_backend_dev_t dev, size_t *
     ggml_backend_cann_get_device_memory(ctx->device, free, total);
 }
 
+static const char *ggml_backend_cann_device_get_id(ggml_backend_dev_t dev) {
+    ggml_backend_cann_device_context * ctx = (ggml_backend_cann_device_context *)dev->context;
+    return ctx->id.c_str();
+}
+
 static enum ggml_backend_dev_type ggml_backend_cann_device_get_type(ggml_backend_dev_t dev) {
     GGML_UNUSED(dev);
     return GGML_BACKEND_DEVICE_TYPE_GPU;
@@ -2831,6 +2837,7 @@ static void ggml_backend_cann_device_get_props(ggml_backend_dev_t dev, ggml_back
     props->name        = ggml_backend_cann_device_get_name(dev);
     props->description = ggml_backend_cann_device_get_description(dev);
     props->type        = ggml_backend_cann_device_get_type(dev);
+    props->id          = ggml_backend_cann_device_get_id(dev);
     ggml_backend_cann_device_get_memory(dev, &props->memory_free, &props->memory_total);
 
     bool host_buffer = getenv("GGML_CANN_NO_PINNED") == nullptr;
@@ -2983,6 +2990,44 @@ static void * ggml_backend_cann_reg_get_proc_address(ggml_backend_reg_t reg, con
     return nullptr;
 }
 
+void ggml_backend_cann_parse_uuid(int32_t device, std::string &uuid) {
+    FILE *fp;
+    char line[128];
+    int npu_id = -1;
+
+    fp = popen("npu-smi info -m", "r");
+    if (!fp) { return ;}
+
+    while (fgets(line, sizeof(line), fp)) {
+        int parsed_chip_logic_id, parsed_npu_id;
+        if (sscanf(line, "%d %*d %d", &parsed_npu_id, &parsed_chip_logic_id) == 2) {
+            if (parsed_chip_logic_id == device) {
+                npu_id = parsed_npu_id;
+                break;
+            }
+        }
+    }
+
+    char cmd[128];
+    snprintf(cmd, sizeof(cmd), "npu-smi info -t board -i %d -c 0", npu_id);
+    fp = popen(cmd, "r");
+    if (!fp) { return ;}
+
+    while (fgets(line, sizeof(line), fp)) {
+        if (strstr(line, "VDie ID")) {
+            char *p = strchr(line, ':');
+            if (p) {
+                p++;
+                while (*p == ' ' || *p == '\t') p++;
+                uuid.assign(p, 44);
+                break ; 
+            }
+        }
+    }
+
+    pclose(fp);
+}
+
 static const ggml_backend_reg_i ggml_backend_cann_reg_interface = {
     /* .get_name          = */ ggml_backend_cann_reg_get_name,
     /* .get_device_count  = */ ggml_backend_cann_reg_get_device_count,
@@ -3007,6 +3052,7 @@ ggml_backend_reg_t ggml_backend_cann_reg() {
                 dev_ctx->description = aclrtGetSocName();
                 dev_ctx->device = i;
                 dev_ctx->name = GGML_CANN_NAME + std::to_string(i);
+                ggml_backend_cann_parse_uuid(i, dev_ctx->id);
                 ggml_cann_set_device(i);
                 ggml_backend_dev_t dev = new ggml_backend_device {
                     /* .iface   = */ ggml_backend_cann_device_interface,
