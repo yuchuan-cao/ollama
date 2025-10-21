@@ -150,6 +150,9 @@ func GPUDevices(ctx context.Context, runners []FilteredRunnerDiscovery) []ml.Dev
 				} else if devices[i].Library == "Vulkan" {
 					id = devices[i].FilteredID
 					envVar = "GGML_VK_VISIBLE_DEVICES"
+				} else if devices[i].Library == "CANN" {
+					envVar = "ASCEND_RT_VISIBLE_DEVICES"
+					id = strings.Split(devices[i].Name, "CANN")[1]
 				} else {
 					slog.Error("Unknown Library:" + devices[i].Library)
 				}

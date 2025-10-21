@@ -173,6 +173,7 @@ func (si SystemInfo) GetOptimalThreadCount() int {
 func (l GpuInfoList) FlashAttentionSupported() bool {
 	for _, gpu := range l {
 		supportsFA := gpu.Library == "cpu" ||
+			gpu.Library == "CANN" ||
 			gpu.Name == "Metal" || gpu.Library == "Metal" ||
 			(gpu.Library == "CUDA" && gpu.DriverMajor >= 7 && !(gpu.ComputeMajor == 7 && gpu.ComputeMinor == 2)) || // We don't have kernels for Jetson Xavier
 			gpu.Library == "ROCm" ||

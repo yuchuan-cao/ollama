@@ -2838,6 +2838,7 @@ static void ggml_backend_cann_device_get_props(ggml_backend_dev_t dev, ggml_back
     props->description = ggml_backend_cann_device_get_description(dev);
     props->type        = ggml_backend_cann_device_get_type(dev);
     props->id          = ggml_backend_cann_device_get_id(dev);
+    props->library     = GGML_CANN_NAME;
     ggml_backend_cann_device_get_memory(dev, &props->memory_free, &props->memory_total);
 
     bool host_buffer = getenv("GGML_CANN_NO_PINNED") == nullptr;
